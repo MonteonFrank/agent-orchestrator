@@ -1,0 +1,18 @@
+# Local environments, generated files, and version-control metadata.
+.venv/
+.git/
+.github/
+.vscode/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.DS_Store
+
+# Never include local credentials in the build context.
+.env
+.env.*
+!.env.example

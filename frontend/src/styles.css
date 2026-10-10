@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: #23272b;
+    background: #f8faf9;
+    font-synthesis: none;
+    letter-spacing: 0;
+  }
+  body {
+    margin: 0;
+    min-width: 320px;
+    background-image: linear-gradient(#e9efed 1px, transparent 1px);
+    background-size: 100% 48px;
+  }
+  button, input, textarea, select { font: inherit; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid #087e70; outline-offset: 3px; }
+}

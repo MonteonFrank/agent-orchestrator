@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-orchestrator"
+version = "0.1.0"
+description = "Agent orchestration API and interactive command-line client"
+readme = "README.md"
+requires-python = ">=3.11"
+# Runtime dependencies shared by the API, CLI, and agent integrations.
+dependencies = [
+    "fastapi>=0.115,<1",
+    "google-genai>=0.6.0",
+    "httpx>=0.27,<1",
+    "langchain-core>=1,<2",
+    "langgraph>=1,<2",
+    "openai>=1,<3",
+    "pydantic>=2,<3",
+    "pydantic-settings>=2,<3",
+    "rich>=13,<15",
+    "typer>=0.12,<1",
+    "uvicorn[standard]>=0.30,<1",
+]
+
+[project.scripts]
+orch = "cli.orch:app"
+
+[project.optional-dependencies]
+# Test automation and local lint tooling.
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.9,<1"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "cli*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
