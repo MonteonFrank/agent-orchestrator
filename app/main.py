@@ -152,7 +152,10 @@ def create_app(engine: OrchestratorEngine | None = None) -> FastAPI:
         if run.pending_checkpoint.checkpoint_id != checkpoint_id:
             raise HTTPException(status_code=400, detail="Invalid checkpoint ID")
         try:
-            orchestrator.submit_approval(run_id, checkpoint_id, approval)
+            if orchestrator.write_on_approval and approval.decision == "approved":
+                await asyncio.to_thread(orchestrator.submit_approval, run_id, checkpoint_id, approval)
+            else:
+                orchestrator.submit_approval(run_id, checkpoint_id, approval)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         snapshot = run.model_copy(deep=True)

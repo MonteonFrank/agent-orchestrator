@@ -16,23 +16,111 @@ python -m pip install -e '.[dev]'
 installs Ruff. Keep shared dependency ranges aligned with `pyproject.toml`.
 Pydantic Settings, LangGraph, LangChain Core, and OpenAI are installed for future
 configuration and agent integrations. Coding and documentation agents use the
-official `google-genai` SDK with `gemini-2.5-flash` when `GEMINI_API_KEY` is set
+official `google-genai` SDK with `gemini-3.8-flash` when `GEMINI_API_KEY` is set
 in the backend process's environment. Set the key in your terminal before
 starting Uvicorn; a local `.env` file is not loaded automatically. No OpenAI key
 is required.
 
 Gemini receives the task, target paths, supplied code/diff context, and revision
 feedback. Responses are validated as structured JSON and converted to unified
-file diffs. Agents do not read repository files automatically, apply changes,
-or create commits. Missing Gemini credentials, API failures, and invalid model
-outputs fall back to deterministic mock proposals; failures are logged without
-response bodies or credentials. Review the outputs before approving them.
+file diffs. Default engines do not read repository files automatically or apply
+changes; workspace access and approved writes are explicit opt-ins below. Agents
+never create commits. Missing Gemini credentials, API failures, and invalid model
+outputs fall back to deterministic mock proposals. Terminal debug messages identify
+successful Gemini use, missing keys, and exception details; the configured API key
+is redacted from exception messages. Error details may include model output, so
+keep backend logs private. Review the outputs before approving them.
+
+Gemini calls that fail with status 503 or an `UNAVAILABLE` message are retried
+up to three times after asynchronous waits of 2, 4, and 8 seconds (four attempts
+total). Each retry is reported in the backend terminal. Exhausted retries and
+non-transient errors use the existing mock fallback.
+Each synchronous model attempt runs in a worker thread via `asyncio.to_thread`,
+with a 60-second `asyncio.wait_for` timeout. A timeout stops waiting and uses the
+mock fallback without retrying; it cannot stop the underlying worker thread,
+which may continue until the SDK request finishes. Backoff waits do not block
+the event loop. Successful or fallback proposals pause at `awaiting_approval`;
+approval is still required to mark a run `completed`.
 
 To run tests without making real Gemini requests, even if your shell has a key:
 
 ```sh
 env -u GEMINI_API_KEY python -m pytest
 ```
+
+## Workspace Solutions
+
+Configure a trusted workspace explicitly when constructing the API or engine:
+
+```python
+from app.engine import OrchestratorEngine
+from app.main import create_app
+
+engine = OrchestratorEngine(
+	workspace_root="/absolute/path/to/your/project",
+	write_on_approval=True,
+)
+application = create_app(engine)
+```
+
+Serve this configured application instead of the default `app.main:app`.
+Omit `write_on_approval` for workspace-aware proposals without disk writes.
+The existing default API remains proposal-only for compatibility and safety.
+
+Workspace-enabled coding first requests a Solution Blueprint containing
+architecture, file paths/purposes, and dependencies. The blueprint is available
+in `run.context_diffs["solution_blueprint"]`. Planning occurs within the Coder
+step before implementation, preserving the existing step-history contract.
+`code_outputs` maps every planned relative path to complete source contents.
+Diffs are rebuilt against the actual workspace snapshot, not model-supplied
+originals. Revision rounds rescan the workspace and preserve feedback.
+
+Each workspace Solution Blueprint also produces `docs/Solution_Blueprint.docx`
+using `python-docx`. The styled report contains a title, architecture overview,
+component/API specifications, data models, a file-path/purpose table, and
+dependencies. Markdown headings, lists, tables, inline code, and fenced code
+blocks are rendered as Word formatting. The architect supplies Markdown in the
+structured blueprint's `architecture`, `component_api_specs`, and `data_models`
+fields; the document builder also accepts standalone JSON or Markdown reports.
+Missing optional specifications are marked "Not specified."
+
+The Word file appears in the CLI/API file diffs as a binary-document summary;
+its complete bytes are base64-encoded under
+`run.context_diffs["blueprint_documents"]["docs/Solution_Blueprint.docx"]`
+with `encoding` and `content` fields. It is separate from `code_outputs` and
+the architect's source-file plan. No document is written until human approval
+with `write_on_approval=True`. Existing Word files are snapshotted as bytes,
+and approval rejects external edits or unsafe paths before writing any files.
+Rejection and proposal-only mode never write the document.
+
+The context scanner inventories up to 1,000 source/documentation paths and reads
+up to 80 UTF-8 files, with a 50 KB per-file and 200 KB total limit. Explicit
+target paths are prioritized. Hidden paths, dependency/build folders, symlinks,
+environment files, credential-named files, and common key-file extensions are
+excluded. Oversized/unreadable target files and unsafe paths fail the run.
+These exclusions are not a complete secret detector: use a sanitized workspace.
+Selected source contents are sent to Gemini when a key is configured, so ensure
+that your repository's confidentiality policy permits this.
+
+The DocReviewer receives the blueprint and all generated contents. File coverage
+and Python syntax are checked before approval; Gemini reviews architecture,
+documentation, and OpenAPI consistency. Workspace-enabled `code` mode includes
+this review gate too. These checks do not execute tests, install dependencies,
+or guarantee architectural correctness. Offline fallback preserves existing
+modules, adds clearly labeled task metadata, and generates an implementation
+proposal plus a smoke-test file for an unscoped new solution. It is not a real
+implementation of arbitrary tasks.
+
+Nothing is written before approval. With writes enabled, approval validates
+relative paths and rejects symlinks, traversal, changed existing files, and
+code/documentation overlaps. Files are staged beside their destinations and
+replaced atomically per file, with best-effort rollback on an interrupted batch.
+The writer creates parent directories but does not delete files, install
+dependencies, execute generated code, or make Git commits. Multi-file writes
+are not a filesystem transaction, and concurrent hostile filesystem mutation
+is not supported. Use an isolated worktree and backups. Approval I/O runs in a
+worker thread in the API. Keep this API authenticated and private before enabling
+workspace writes; its default CORS policy is intended only for local development.
 
 ## Container
 
